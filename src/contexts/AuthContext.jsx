@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 const AuthContext = createContext();
@@ -67,12 +67,42 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const loginWithGoogle = async (roleToSet = 'citizen') => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+
+      // Check if user exists in Firestore
+      const docRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) {
+        // First time login, save to Firestore
+        await setDoc(docRef, {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || 'Google User',
+          role: roleToSet,
+          createdAt: new Date().toISOString()
+        });
+        setRole(roleToSet);
+      } else {
+        setRole(docSnap.data().role || 'citizen');
+      }
+
+      return { data: user, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ user, role, login, signup, loginWithGoogle, logout, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );
